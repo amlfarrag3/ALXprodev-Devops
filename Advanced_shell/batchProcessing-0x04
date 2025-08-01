@@ -2,47 +2,35 @@
 
 POKEMONS=("bulbasaur" "ivysaur" "venusaur" "charmander" "charmeleon")
 DATA_DIR="pokemon_data"
-ERROR_LOG="errors.txt"
 MAX_RETRIES=3
 
 mkdir -p "$DATA_DIR"
-: > "$ERROR_LOG"
 
-# Function to fetch Pokémon data with retry logic (runs in background)
+# Function to fetch Pokémon data with retries
 fetch_pokemon() {
-    local name=$1
-    local retries=0
-    local success=0
-
-    echo "Fetching data for $name..."
+    name=$1
+    retries=0
 
     while [ $retries -lt $MAX_RETRIES ]; do
-        response=$(curl -s -w "%{http_code}" -o "$DATA_DIR/${name}.json" "https://pokeapi.co/api/v2/pokemon/${name,,}/")
-        http_code=${response:(-3)}
-
-        if [ "$http_code" -eq 200 ]; then
+        if curl -s "https://pokeapi.co/api/v2/pokemon/${name,,}" -o "$DATA_DIR/${name}.json"; then
             echo "Saved data to $DATA_DIR/${name}.json ✅"
-            success=1
-            break
+            return
         else
-            ((retries++))
-            echo "Attempt $retries for $name failed with HTTP status $http_code"
+            echo "Retrying $name... attempt $((retries + 1))"
             sleep 2
+            retries=$((retries + 1))
         fi
     done
 
-    if [ $success -ne 1 ]; then
-        echo "Failed to fetch $name after $MAX_RETRIES attempts ❌" | tee -a "$ERROR_LOG"
-        rm -f "$DATA_DIR/${name}.json"
-    fi
+    echo "Failed to fetch $name after $MAX_RETRIES attempts ❌"
 }
 
-# Launch all fetches in background
+# Launch each fetch in the background
 for name in "${POKEMONS[@]}"; do
     fetch_pokemon "$name" &
 done
 
-# Wait for all background jobs to finish
+# Wait for all background jobs to complete
 wait
 
-echo "✅ All fetches completed."
+echo "✅ All parallel fetches completed."
