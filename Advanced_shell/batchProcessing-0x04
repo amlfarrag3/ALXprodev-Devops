@@ -2,48 +2,38 @@
 
 POKEMONS=("bulbasaur" "ivysaur" "venusaur" "charmander" "charmeleon")
 DATA_DIR="pokemon_data"
-MAX_RETRIES=3
-CONCURRENT_LIMIT=3   # Max parallel requests
-
 mkdir -p "$DATA_DIR"
-touch fetch_errors.log
 
-# Function to fetch Pokémon data with retry logic
-fetch_pokemon() {
-    local name=$1
-    local file="$DATA_DIR/${name}.json"
-    local attempt=1
+PIDS=()
 
-    while [ $attempt -le $MAX_RETRIES ]; do
-        echo "Fetching $name... (Attempt $attempt)"
-        if curl -s --fail "https://pokeapi.co/api/v2/pokemon/${name,,}" -o "$file"; then
-            echo "✅ Saved data to $file"
-            return 0
-        else
-            echo "⚠️ Attempt $attempt failed for $name" >&2
-            attempt=$((attempt + 1))
-            sleep 1
-        fi
-    done
-
-    echo "❌ Failed to fetch $name after $MAX_RETRIES attempts" >> fetch_errors.log
-    return 1
-}
-
-# Control concurrency with a job pool
-job_count=0
 for name in "${POKEMONS[@]}"; do
-    fetch_pokemon "$name" &
-    job_count=$((job_count + 1))
-
-    # Wait if max concurrent jobs reached
-    if [ "$job_count" -ge "$CONCURRENT_LIMIT" ]; then
-        wait
-        job_count=0
-    fi
+    {
+        echo "Fetching data for $name..."
+        curl -s "https://pokeapi.co/api/v2/pokemon/${name,,}" -o "$DATA_DIR/${name}.json"
+        if [ $? -eq 0 ]; then
+            echo "Saved data to $DATA_DIR/${name}.json ✅"
+        else
+            echo "Failed to fetch data for $name ❌"
+        fi
+    } &
+    PIDS+=($!)
 done
 
-# Wait for any remaining background jobs
+# Optional: Timeout in seconds
+TIMEOUT=10
+
+# Monitor and kill slow processes
+for pid in "${PIDS[@]}"; do
+    (
+        sleep $TIMEOUT
+        if kill -0 "$pid" 2>/dev/null; then
+            echo "⏱️ Process $pid took too long. Killing..."
+            kill "$pid"
+        fi
+    ) &
+done
+
+# Wait for all original curl jobs to finish
 wait
 
 echo "✅ All fetch jobs completed."
