@@ -1,13 +1,9 @@
 #!/bin/bash
-jq -r '[
-  .name, 
-  .types[0].type.name, 
-  .weight, 
-  .height
-] | @tsv' data.json | awk -F'\t' '{ 
-  name=toupper(substr($1,1,1)) substr($1,2);
-  type=toupper(substr($2,1,1)) substr($2,2);
-  weight=$3/10 "kg";
-  height=$4/10 "m";
-  printf "%s is of type %s, weighs %s, and is %s tall.\n", name, type, weight, height;
+jq -r '.name, .types[0].type.name, .weight, .height' data.json | awk 'NR==1 {name=toupper(substr($0,1,1)) substr($0,2)} 
+NR==2 {type=toupper(substr($0,1,1)) substr($0,2)} 
+NR==3 {weight=$0/10} 
+NR==4 {
+  height=$0/10
+  printf "%s is of type %s, weighs %.0fkg, and is %.1fm tall.\n", name, type, weight, height
 }'
+
