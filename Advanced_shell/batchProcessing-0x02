@@ -1,16 +1,46 @@
 #!/bin/bash
 
-mkdir -p pokemon_data
+POKEMONS=("bulbasaur" "ivysaur" "venusaur" "charmander" "charmeleon")
+DATA_DIR="pokemon_data"
+ERROR_LOG="errors.txt"
+MAX_RETRIES=3
 
-for name in bulbasaur ivysaur venusaur charmander charmeleon
-do
+# Ensure the output directory exists
+mkdir -p "$DATA_DIR"
+: > "$ERROR_LOG"  # Clear the error log
+
+# Function to fetch Pokémon data with retry logic
+fetch_pokemon() {
+    local name=$1
+    local retries=0
+    local success=0
+
     echo "Fetching data for $name..."
-    response=$(curl -s -f "https://pokeapi.co/api/v2/pokemon/$name")
-    if [ $? -eq 0 ]; then
-        echo "$response" > "pokemon_data/${name}.json"
-        echo "Saved data to pokemon_data/${name}.json ✅"
-    else
-        echo "Failed to fetch data for $name ❌" >> errors.txt
+
+    while [ $retries -lt $MAX_RETRIES ]; do
+        response=$(curl -s -w "%{http_code}" -o "$DATA_DIR/${name}.json" "https://pokeapi.co/api/v2/pokemon/${name,,}/")
+        http_code=${response:(-3)}
+
+        if [ "$http_code" -eq 200 ]; then
+            echo "Saved data to $DATA_DIR/${name}.json ✅"
+            success=1
+            break
+        else
+            ((retries++))
+            echo "Attempt $retries for $name failed with HTTP status $http_code"
+            sleep 2
+        fi
+    done
+
+    if [ $success -ne 1 ]; then
+        echo "Failed to fetch $name after $MAX_RETRIES attempts ❌" | tee -a "$ERROR_LOG"
+        rm -f "$DATA_DIR/${name}.json"  # Remove incomplete file
     fi
-    sleep 1
+}
+
+# Loop through Pokémon list and fetch data
+for name in "${POKEMONS[@]}"; do
+    fetch_pokemon "$name"
+    sleep 1  # Rate limiting
 done
+
